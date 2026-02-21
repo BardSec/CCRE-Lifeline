@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}RubricOps{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="layout">
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">Rubric<span>Ops</span></div>
+    <div class="sidebar-nav">
+      <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">
+        &#9632; Dashboard
+      </a>
+
+      <div class="nav-group">Evaluations</div>
+      <a href="/evaluations" class="{% if '/evaluations' in request.url.path %}active{% endif %}">
+        &#9660; Evaluations
+      </a>
+      <a href="/tasks" class="{% if '/tasks' in request.url.path %}active{% endif %}">
+        &#9675; Action Tasks
+      </a>
+      <a href="/evidence" class="{% if '/evidence' in request.url.path %}active{% endif %}">
+        &#128196; Evidence
+      </a>
+
+      {% if current_user.role in ('admin', 'evaluator') %}
+      <div class="nav-group">Admin</div>
+      {% if current_user.role == 'admin' %}
+      <a href="/admin/users" class="{% if '/admin/users' in request.url.path %}active{% endif %}">
+        &#128101; Users
+      </a>
+      <a href="/admin/tenant" class="{% if '/admin/tenant' in request.url.path %}active{% endif %}">
+        &#9881; Tenant Settings
+      </a>
+      <a href="/admin/audit-log" class="{% if '/admin/audit' in request.url.path %}active{% endif %}">
+        &#128196; Audit Log
+      </a>
+      {% endif %}
+      {% endif %}
+    </div>
+    <div class="sidebar-footer">
+      Signed in as <strong>{{ current_user.name }}</strong><br>
+      <span class="badge badge-{{ current_user.role }}">{{ current_user.role }}</span>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-title">{% block page_title %}RubricOps{% endblock %}</div>
+      <div class="topbar-user">
+        <span class="text-muted text-sm">{{ current_user.tenant.name }}</span>
+        <form method="post" action="/logout" style="margin:0">
+          <button class="btn btn-secondary btn-sm" type="submit">Sign out</button>
+        </form>
+      </div>
+    </header>
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+<script>
+// Mobile sidebar toggle
+document.addEventListener('DOMContentLoaded', function() {
+  var sidebar = document.getElementById('sidebar');
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') sidebar.classList.remove('open');
+  });
+});
+</script>
+</body>
+</html>

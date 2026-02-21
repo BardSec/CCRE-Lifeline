@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Evidence — RubricOps{% endblock %}
+{% block page_title %}Evidence Library{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+  <p class="text-muted">All evidence files for your district.</p>
+  {% if current_user.role in ('admin', 'evaluator', 'contributor') %}
+  <a href="/evidence/upload" class="btn btn-primary">+ Upload Evidence</a>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Type</th>
+          <th>Sensitivity</th>
+          <th>Rubric Item</th>
+          <th>Uploaded</th>
+          <th>Expiry</th>
+          <th>Size</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in evidence_list %}
+        {% set is_stale = (now - ev.uploaded_at).days > 90 %}
+        {% set is_expiring = ev.expiry_date and (ev.expiry_date - now).days < 30 %}
+        <tr {% if is_stale or is_expiring %}style="background:#fffbeb"{% endif %}>
+          <td>
+            {{ ev.filename }}
+            {% if is_stale %}<span class="badge badge-open" style="font-size:10px">STALE</span>{% endif %}
+            {% if is_expiring %}<span class="badge badge-open" style="font-size:10px">EXPIRING</span>{% endif %}
+          </td>
+          <td>{{ ev.evidence_type }}</td>
+          <td><span class="badge badge-{{ 'viewer' if ev.sensitivity.value == 'public' else ('contributor' if ev.sensitivity.value == 'internal' else 'admin') }}">{{ ev.sensitivity.value }}</span></td>
+          <td class="text-muted text-sm">{{ ev.rubric_item.code }} – {{ ev.rubric_item.title | truncate(40) }}</td>
+          <td class="text-muted text-sm">{{ ev.uploaded_at.strftime('%Y-%m-%d') }}</td>
+          <td class="text-muted text-sm {% if is_expiring %}text-danger{% endif %}">
+            {{ ev.expiry_date.strftime('%Y-%m-%d') if ev.expiry_date else '—' }}
+          </td>
+          <td class="text-muted text-sm">{{ (ev.size_bytes / 1024) | round(0) | int }} KB</td>
+          <td>
+            <div class="btn-group">
+              <a href="/evidence/{{ ev.id }}/download" class="btn btn-secondary btn-sm">&#8659;</a>
+              {% if current_user.role in ('admin', 'evaluator', 'contributor') %}
+              <form method="post" action="/evidence/{{ ev.id }}/delete" style="margin:0">
+                <button class="btn btn-danger btn-sm" type="submit"
+                        onclick="return confirm('Delete this evidence file?')">&#10005;</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted" style="text-align:center;padding:2rem">
+          No evidence files uploaded yet.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

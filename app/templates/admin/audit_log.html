@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — RubricOps{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+  <p class="text-muted">Showing page {{ page }} of {{ ((total / per_page) | round(0, 'ceil')) | int }}  ({{ total }} total entries)</p>
+  <div class="btn-group">
+    {% if page > 1 %}
+    <a href="/admin/audit-log?page={{ page - 1 }}" class="btn btn-secondary btn-sm">&larr; Prev</a>
+    {% endif %}
+    {% if page * per_page < total %}
+    <a href="/admin/audit-log?page={{ page + 1 }}" class="btn btn-secondary btn-sm">Next &rarr;</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Entity</th>
+          <th>IP</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="text-muted text-sm" style="white-space:nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td class="text-sm">{{ log.actor_user_id or '—' }}</td>
+          <td><code style="font-size:11px">{{ log.action }}</code></td>
+          <td class="text-muted text-sm">{{ log.entity_type }} {{ log.entity_id[:16] if log.entity_id else '' }}</td>
+          <td class="text-muted text-sm">{{ log.ip_address or '—' }}</td>
+          <td class="text-sm text-muted">{{ log.detail_json | tojson if log.detail_json else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted" style="text-align:center;padding:2rem">No audit log entries.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Users — RubricOps{% endblock %}
+{% block page_title %}User Management{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+  <p class="text-muted">Manage users for <strong>{{ current_user.tenant.name }}</strong>.</p>
+  <button onclick="document.getElementById('create-user-modal').style.display='flex'"
+          class="btn btn-primary">+ Add User</button>
+</div>
+
+<div class="card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Joined</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.name }}</strong></td>
+          <td>{{ u.email }}</td>
+          <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+          <td>{% if u.is_active %}<span style="color:var(--success)">&#10003; Active</span>{% else %}<span style="color:var(--danger)">&#10005; Inactive</span>{% endif %}</td>
+          <td class="text-muted">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+          <td>
+            {% if u.id != current_user.id %}
+            <form method="post" action="/admin/users/{{ u.id }}/update"
+                  style="display:flex;gap:.25rem;align-items:center">
+              <select name="role" style="padding:.2rem .4rem;font-size:12px;border:1px solid #e5e7eb;border-radius:4px">
+                {% for r in UserRole %}
+                <option value="{{ r.value }}" {% if r == u.role %}selected{% endif %}>{{ r.value }}</option>
+                {% endfor %}
+              </select>
+              <select name="is_active" style="padding:.2rem .4rem;font-size:12px;border:1px solid #e5e7eb;border-radius:4px">
+                <option value="true" {% if u.is_active %}selected{% endif %}>Active</option>
+                <option value="false" {% if not u.is_active %}selected{% endif %}>Inactive</option>
+              </select>
+              <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+            </form>
+            {% else %}
+            <span class="text-muted text-sm">(you)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create user modal -->
+<div id="create-user-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+     z-index:200;align-items:center;justify-content:center;">
+  <div class="card" style="width:100%;max-width:420px;margin:1rem">
+    <div class="card-header">
+      Add User
+      <button onclick="document.getElementById('create-user-modal').style.display='none'"
+              class="btn btn-secondary btn-sm">&times;</button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/users">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+          <label>Email *</label>
+          <input type="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label>Password *</label>
+          <input type="password" name="password" required minlength="8">
+          <p class="form-hint">Minimum 8 characters.</p>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select name="role">
+            {% for r in UserRole %}
+            <option value="{{ r.value }}" {% if r.value == 'viewer' %}selected{% endif %}>{{ r.value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-primary">Create User</button>
+          <button type="button" class="btn btn-secondary"
+                  onclick="document.getElementById('create-user-modal').style.display='none'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

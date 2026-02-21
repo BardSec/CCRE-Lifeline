@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Tenant Settings — RubricOps{% endblock %}
+{% block page_title %}Tenant Settings{% endblock %}
+
+{% block content %}
+<div style="max-width:540px">
+  <div class="card">
+    <div class="card-header">District Settings</div>
+    <div class="card-body">
+      <form method="post" action="/admin/tenant">
+        <div class="form-group">
+          <label>District Name *</label>
+          <input type="text" name="name" value="{{ tenant.name }}" required>
+        </div>
+        <div class="form-group">
+          <label>Timezone</label>
+          <input type="text" name="timezone" value="{{ tenant.timezone }}"
+                 placeholder="America/Chicago">
+          <p class="form-hint">IANA timezone name (e.g., America/New_York, US/Pacific).</p>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Stale Evidence Threshold (days)</label>
+            <input type="number" name="stale_evidence_days" value="{{ tenant.stale_evidence_days }}"
+                   min="30" max="730">
+            <p class="form-hint">Default: 90 days</p>
+          </div>
+          <div class="form-group">
+            <label>Stale Policy Threshold (days)</label>
+            <input type="number" name="stale_policy_days" value="{{ tenant.stale_policy_days }}"
+                   min="90" max="1825">
+            <p class="form-hint">Default: 365 days</p>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card mt-2">
+    <div class="card-header">Tenant Information</div>
+    <div class="card-body">
+      <table>
+        <tr><td class="text-muted" style="width:140px">Tenant ID</td><td><code>{{ tenant.id }}</code></td></tr>
+        <tr><td class="text-muted">Created</td><td>{{ tenant.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

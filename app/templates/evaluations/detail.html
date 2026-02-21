@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}{{ eval.title }} — RubricOps{% endblock %}
+{% block page_title %}{{ eval.title }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="flex justify-between items-center mb-2">
+  <div>
+    <a href="/evaluations" class="text-muted text-sm">&larr; Evaluations</a>
+    <h2 style="font-size:1.1rem;font-weight:600;margin-top:.25rem">{{ eval.title }}</h2>
+    <p class="text-muted text-sm">
+      {{ eval.rubric.name }} &bull;
+      {{ eval.period_start.strftime('%Y-%m-%d') }} – {{ eval.period_end.strftime('%Y-%m-%d') }} &bull;
+      <span class="badge badge-{{ eval.status }}">{{ eval.status }}</span>
+    </p>
+  </div>
+  <div class="btn-group">
+    <a href="/evaluations/{{ eval.id }}/export/csv" class="btn btn-secondary btn-sm">&#8659; CSV</a>
+    <a href="/evaluations/{{ eval.id }}/export/pdf" class="btn btn-secondary btn-sm">&#8659; PDF</a>
+    {% if eval.status == 'draft' and current_user.role in ('admin', 'evaluator') %}
+    <form method="post" action="/evaluations/{{ eval.id }}/finalize" style="margin:0">
+      <button class="btn btn-success btn-sm" type="submit"
+              onclick="return confirm('Finalize this evaluation? Scores will become read-only.')">
+        Finalize
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Domain summary -->
+<div class="card mb-2">
+  <div class="card-header">Domain Summary</div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <thead>
+        <tr><th>Domain</th><th>Items</th><th>Scored</th><th>Avg Maturity</th><th>Visual</th></tr>
+      </thead>
+      <tbody>
+        {% for data in domains %}
+        {% set d = data.domain %}
+        {% set scored_list = data.scores | selectattr('maturity_level', 'gt', 0) | list %}
+        {% set avg = domain_averages[d.id] %}
+        <tr>
+          <td><strong>{{ d.name }}</strong></td>
+          <td>{{ data.scores | length }}</td>
+          <td>{{ scored_list | length }}</td>
+          <td>{{ avg if avg else '—' }}</td>
+          <td>
+            {% if avg %}
+            <div class="maturity-bar">
+              {% for i in range(1, 6) %}
+              <div class="maturity-pip {% if i <= avg|int %}filled l{{ i }}{% endif %}"
+                   title="Level {{ i }}"></div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="text-muted">Unscored</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Suggest tasks -->
+{% if eval.status == 'draft' and current_user.role in ('admin', 'evaluator') %}
+<div class="card mb-2">
+  <div class="card-body">
+    <form method="post" action="/evaluations/{{ eval.id }}/suggest-tasks"
+          style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      <strong>Generate tasks for items below maturity level:</strong>
+      <select name="target_level" style="width:80px">
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm">Generate Action Tasks</button>
+      <span class="text-muted text-sm">Creates tasks for gaps; skips items that already have a task.</span>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Scores by domain -->
+{% for data in domains %}
+{% set d = data.domain %}
+<div class="card mb-2">
+  <div class="card-header">{{ d.name }}</div>
+  <div class="card-body" style="padding:0">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:80px">Code</th>
+          <th>Control</th>
+          <th style="width:100px">Maturity</th>
+          <th style="width:90px">Confidence</th>
+          <th style="width:80px">Evidence</th>
+          {% if eval.status == 'draft' and current_user.role in ('admin','evaluator','contributor') %}
+          <th style="width:60px">Edit</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for score in data.scores %}
+        {% set item = score.rubric_item %}
+        <tr>
+          <td><code>{{ item.code }}</code></td>
+          <td>
+            <strong>{{ item.title }}</strong>
+            {% if item.description %}
+            <p class="text-muted text-sm">{{ item.description }}</p>
+            {% endif %}
+          </td>
+          <td>
+            <div class="maturity-bar">
+              {% for i in range(1, 6) %}
+              <div class="maturity-pip {% if score.maturity_level >= i %}filled l{{ i }}{% endif %}"></div>
+              {% endfor %}
+            </div>
+            <span class="text-sm text-muted">
+              {% if score.maturity_level == 0 %}Unscored{% else %}Level {{ score.maturity_level }}{% endif %}
+            </span>
+          </td>
+          <td>
+            {% if score.confidence %}
+            <span class="badge badge-{{ 'open' if score.confidence.value == 'low' else ('in_progress' if score.confidence.value == 'med' else 'done') }}">
+              {{ score.confidence.value }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="/evidence/upload?rubric_item_id={{ item.id }}&evaluation_id={{ eval.id }}"
+               class="btn btn-secondary btn-sm">+ File</a>
+          </td>
+          {% if eval.status == 'draft' and current_user.role in ('admin','evaluator','contributor') %}
+          <td>
+            <button onclick="openScoreModal('{{ score.id }}', {{ score.maturity_level }},
+                    '{{ score.confidence.value if score.confidence else '' }}',
+                    `{{ (score.rationale or '') | replace('`', "'") }}`,
+                    `{{ (score.compensating_controls or '') | replace('`', "'") }}`)"
+                    class="btn btn-secondary btn-sm">Edit</button>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+<!-- Tasks section -->
+<div class="card mt-2" id="tasks">
+  <div class="card-header">
+    Action Tasks
+    <a href="/tasks" class="btn btn-secondary btn-sm">Manage all</a>
+  </div>
+  <div class="card-body" style="padding:0">
+    {% set eval_tasks = eval.tasks %}
+    {% if eval_tasks %}
+    <table>
+      <thead>
+        <tr><th>Title</th><th>Status</th><th>Owner</th><th>Due</th></tr>
+      </thead>
+      <tbody>
+        {% for t in eval_tasks %}
+        <tr>
+          <td>{{ t.title }}</td>
+          <td><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>
+          <td class="text-muted">{{ t.owner.name if t.owner else '—' }}</td>
+          <td class="text-muted">{{ t.due_date.strftime('%Y-%m-%d') if t.due_date else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted" style="padding:1rem">No tasks yet. Use "Generate Action Tasks" above.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Score edit modal -->
+<div id="score-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+     z-index:200;align-items:center;justify-content:center;">
+  <div class="card" style="width:100%;max-width:520px;margin:1rem">
+    <div class="card-header">
+      Edit Score
+      <button onclick="document.getElementById('score-modal').style.display='none'"
+              class="btn btn-secondary btn-sm">&times;</button>
+    </div>
+    <div class="card-body">
+      <form id="score-form" method="post">
+        <div class="form-group">
+          <label>Maturity Level (0 = unscored)</label>
+          <select name="maturity_level" id="modal-level">
+            <option value="0">0 — Unscored</option>
+            <option value="1">1 — Initial / Ad-hoc</option>
+            <option value="2">2 — Developing</option>
+            <option value="3">3 — Defined</option>
+            <option value="4">4 — Managed</option>
+            <option value="5">5 — Optimizing</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Confidence</label>
+          <select name="confidence" id="modal-confidence">
+            <option value="">— Select —</option>
+            <option value="low">Low</option>
+            <option value="med">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Rationale</label>
+          <textarea name="rationale" id="modal-rationale" rows="3"
+                    placeholder="Describe how this score was determined…"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Compensating Controls</label>
+          <textarea name="compensating_controls" id="modal-controls" rows="2"
+                    placeholder="Any mitigating controls that justify this score…"></textarea>
+        </div>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-primary">Save Score</button>
+          <button type="button" class="btn btn-secondary"
+                  onclick="document.getElementById('score-modal').style.display='none'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openScoreModal(scoreId, level, confidence, rationale, controls) {
+  var modal = document.getElementById('score-modal');
+  var form = document.getElementById('score-form');
+  form.action = '/evaluations/{{ eval.id }}/scores/' + scoreId;
+  document.getElementById('modal-level').value = level;
+  document.getElementById('modal-confidence').value = confidence;
+  document.getElementById('modal-rationale').value = rationale;
+  document.getElementById('modal-controls').value = controls;
+  modal.style.display = 'flex';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Tasks — RubricOps{% endblock %}
+{% block page_title %}Action Tasks{% endblock %}
+
+{% block content %}
+<!-- Filter bar -->
+<div class="flex gap-1 mb-2" style="flex-wrap:wrap">
+  <a href="/tasks" class="btn {% if not status_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+  <a href="/tasks?status_filter=open" class="btn {% if status_filter == 'open' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Open</a>
+  <a href="/tasks?status_filter=in_progress" class="btn {% if status_filter == 'in_progress' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">In Progress</a>
+  <a href="/tasks?status_filter=done" class="btn {% if status_filter == 'done' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Done</a>
+  <span style="flex:1"></span>
+  {% if current_user.role in ('admin', 'evaluator', 'contributor') %}
+  <button onclick="document.getElementById('create-task-modal').style.display='flex'"
+          class="btn btn-primary btn-sm">+ New Task</button>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Status</th>
+          <th>Owner</th>
+          <th>Due Date</th>
+          <th>Control</th>
+          {% if current_user.role in ('admin','evaluator','contributor') %}
+          <th>Update</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+        <tr>
+          <td>
+            {{ task.title }}
+            {% if task.description %}
+            <p class="text-muted text-sm">{{ task.description | truncate(80) }}</p>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-{{ task.status }}">{{ task.status }}</span></td>
+          <td class="text-muted">{{ task.owner.name if task.owner else '—' }}</td>
+          <td class="text-muted {% if task.due_date and task.due_date < now and task.status != 'done' %}text-danger{% endif %}">
+            {{ task.due_date.strftime('%Y-%m-%d') if task.due_date else '—' }}
+          </td>
+          <td class="text-sm text-muted">
+            {{ task.rubric_item.code if task.rubric_item else '—' }}
+          </td>
+          {% if current_user.role in ('admin','evaluator','contributor') %}
+          <td>
+            <form method="post" action="/tasks/{{ task.id }}/update" style="display:flex;gap:.25rem">
+              <select name="new_status" style="padding:.2rem .4rem;font-size:12px;border:1px solid #e5e7eb;border-radius:4px">
+                {% for s in TaskStatus %}
+                <option value="{{ s.value }}" {% if s == task.status %}selected{% endif %}>{{ s.value }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-secondary btn-sm">&#10003;</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted" style="text-align:center;padding:2rem">
+          No tasks found. Generate them from an evaluation or create one manually.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create task modal -->
+{% if current_user.role in ('admin', 'evaluator', 'contributor') %}
+<div id="create-task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+     z-index:200;align-items:center;justify-content:center;">
+  <div class="card" style="width:100%;max-width:480px;margin:1rem">
+    <div class="card-header">
+      New Task
+      <button onclick="document.getElementById('create-task-modal').style.display='none'"
+              class="btn btn-secondary btn-sm">&times;</button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/tasks/create">
+        <div class="form-group">
+          <label>Title *</label>
+          <input type="text" name="title" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Assign to</label>
+          <select name="owner_user_id">
+            <option value="">— Unassigned —</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Due Date</label>
+          <input type="date" name="due_date">
+        </div>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-primary">Create</button>
+          <button type="button" class="btn btn-secondary"
+                  onclick="document.getElementById('create-task-modal').style.display='none'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

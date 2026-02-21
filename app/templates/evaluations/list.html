@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Evaluations — RubricOps{% endblock %}
+{% block page_title %}Evaluations{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-2">
+  <h2 style="font-size:1.1rem;font-weight:600">All Evaluations</h2>
+  {% if current_user.role in ('admin', 'evaluator') %}
+  <button onclick="document.getElementById('create-modal').style.display='flex'"
+          class="btn btn-primary">+ New Evaluation</button>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Rubric</th>
+          <th>Period</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in evaluations %}
+        <tr>
+          <td><a href="/evaluations/{{ ev.id }}">{{ ev.title }}</a></td>
+          <td class="text-muted">{{ ev.rubric.name }}</td>
+          <td class="text-muted">{{ ev.period_start.strftime('%Y-%m-%d') }} – {{ ev.period_end.strftime('%Y-%m-%d') }}</td>
+          <td><span class="badge badge-{{ ev.status }}">{{ ev.status }}</span></td>
+          <td class="text-muted">{{ ev.created_at.strftime('%Y-%m-%d') }}</td>
+          <td>
+            <a href="/evaluations/{{ ev.id }}" class="btn btn-secondary btn-sm">Open</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted" style="text-align:center;padding:2rem">
+          No evaluations yet. Create one to get started.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create modal -->
+{% if current_user.role in ('admin', 'evaluator') %}
+<div id="create-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+     z-index:200;align-items:center;justify-content:center;">
+  <div class="card" style="width:100%;max-width:480px;margin:1rem">
+    <div class="card-header">
+      New Evaluation
+      <button onclick="document.getElementById('create-modal').style.display='none'"
+              class="btn btn-secondary btn-sm">&times;</button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/evaluations">
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" name="title" required placeholder="e.g., FY2025 Annual Cybersecurity Review">
+        </div>
+        <div class="form-group">
+          <label>Rubric</label>
+          <select name="rubric_id" required>
+            {% for r in rubrics %}
+            <option value="{{ r.id }}">{{ r.name }} v{{ r.version }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Period Start</label>
+            <input type="date" name="period_start" required>
+          </div>
+          <div class="form-group">
+            <label>Period End</label>
+            <input type="date" name="period_end" required>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-primary">Create Evaluation</button>
+          <button type="button" class="btn btn-secondary"
+                  onclick="document.getElementById('create-modal').style.display='none'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
