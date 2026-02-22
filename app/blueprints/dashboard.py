@@ -2,31 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from flask import Blueprint, render_template
+from flask_login import login_required, current_user
 
-from app.auth.dependencies import get_current_user
 from app.database import get_db
-from app.models import (
-    Evaluation, EvaluationStatus, Evidence, Score, Task, TaskStatus, User
-)
+from app.models import Evaluation, EvaluationStatus, Evidence, Task, TaskStatus
 
-router = APIRouter(tags=["dashboard"])
-templates = Jinja2Templates(directory="app/templates")
+dashboard_bp = Blueprint("dashboard", __name__)
 
 
-@router.get("/", response_class=HTMLResponse)
-async def dashboard(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+@dashboard_bp.route("/")
+@login_required
+def index():
+    db = get_db()
     tid = current_user.tenant_id
 
-    # Counts
     total_evals = db.query(Evaluation).filter(Evaluation.tenant_id == tid).count()
     draft_evals = (
         db.query(Evaluation)
@@ -68,7 +58,6 @@ async def dashboard(
         .count()
     )
 
-    # Recent evaluations
     recent_evals = (
         db.query(Evaluation)
         .filter(Evaluation.tenant_id == tid)
@@ -77,7 +66,6 @@ async def dashboard(
         .all()
     )
 
-    # My open tasks
     my_tasks = (
         db.query(Task)
         .filter(
@@ -90,18 +78,14 @@ async def dashboard(
         .all()
     )
 
-    return templates.TemplateResponse(
+    return render_template(
         "dashboard.html",
-        {
-            "request": request,
-            "current_user": current_user,
-            "total_evals": total_evals,
-            "draft_evals": draft_evals,
-            "open_tasks": open_tasks,
-            "overdue_tasks": overdue_tasks,
-            "stale_evidence": stale_evidence,
-            "expiring_evidence": expiring_evidence,
-            "recent_evals": recent_evals,
-            "my_tasks": my_tasks,
-        },
+        total_evals=total_evals,
+        draft_evals=draft_evals,
+        open_tasks=open_tasks,
+        overdue_tasks=overdue_tasks,
+        stale_evidence=stale_evidence,
+        expiring_evidence=expiring_evidence,
+        recent_evals=recent_evals,
+        my_tasks=my_tasks,
     )

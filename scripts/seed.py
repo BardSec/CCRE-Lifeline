@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """
-Seed script: creates a demo tenant, admin user, and example K12 cybersecurity rubric.
+Seed script: creates the initial tenant and K12 cybersecurity rubric.
 
-Run: docker compose exec web python scripts/seed.py
+Users are provisioned automatically on first OIDC login — no seeding required.
+Run automatically by entrypoint.sh, or manually:
+    docker compose exec web python scripts/seed.py
 """
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
-# Ensure project root is on the path when running inside Docker
 sys.path.insert(0, "/app")
 
-from app.auth.security import hash_password
-from app.config import get_settings
-from app.database import SessionLocal
-from app.models import (
-    Rubric, RubricDomain, RubricItem, Tenant, User, UserRole
-)
+from app.database import init_db, SessionLocal
+from app.models import Rubric, RubricDomain, RubricItem, Tenant
 
-settings = get_settings()
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg2://rubricops:changeme@db:5432/rubricops",
+)
+SEED_TENANT_NAME = os.environ.get("SEED_TENANT_NAME", "Lakeside School District")
+
+init_db(DATABASE_URL)
 
 
 MATURITY_LABELS = {
@@ -114,7 +117,7 @@ RUBRIC_DATA = {
                 {
                     "code": "DPP-1",
                     "title": "Data Classification Policy",
-                    "description": "A formal data classification policy defines sensitivity tiers (public, internal, confidential, restricted).",
+                    "description": "A formal data classification policy defines sensitivity tiers.",
                     "guidance": (
                         "Review the written data classification policy. "
                         "Confirm staff training on classification levels and how to handle each tier."
@@ -141,7 +144,7 @@ RUBRIC_DATA = {
                     "description": "Sensitive data is encrypted at rest (AES-256) and in transit (TLS 1.2+).",
                     "guidance": (
                         "Verify disk encryption on endpoints (BitLocker/FileVault). "
-                        "Check TLS configuration on public-facing services; confirm no deprecated protocols."
+                        "Check TLS configuration on public-facing services."
                     ),
                     "maturity_levels": MATURITY_LABELS,
                     "evidence_types": ["screenshot", "audit_report", "log"],
@@ -150,7 +153,7 @@ RUBRIC_DATA = {
                 {
                     "code": "DPP-4",
                     "title": "Data Loss Prevention (DLP)",
-                    "description": "DLP controls are in place to detect and prevent unauthorized exfiltration of sensitive data.",
+                    "description": "DLP controls are in place to detect and prevent unauthorized exfiltration.",
                     "guidance": (
                         "Review DLP policy configuration in M365/Google Workspace or dedicated DLP tool. "
                         "Check alert logs and incident response for DLP events."
@@ -184,7 +187,7 @@ RUBRIC_DATA = {
                     "description": "A documented IRP defines roles, escalation paths, communication templates, and playbooks.",
                     "guidance": (
                         "Review the IRP document for completeness: scope, roles, playbooks, communication trees. "
-                        "Confirm plan is reviewed at least annually and after significant incidents."
+                        "Confirm plan is reviewed at least annually."
                     ),
                     "maturity_levels": MATURITY_LABELS,
                     "evidence_types": ["policy", "procedure"],
@@ -205,7 +208,7 @@ RUBRIC_DATA = {
                 {
                     "code": "IRR-3",
                     "title": "Tabletop Exercises",
-                    "description": "Incident response tabletop exercises are conducted at least annually with key stakeholders.",
+                    "description": "Incident response tabletop exercises are conducted at least annually.",
                     "guidance": (
                         "Review exercise documentation, attendance records, and after-action reports. "
                         "Confirm findings are tracked and remediated."
@@ -220,7 +223,7 @@ RUBRIC_DATA = {
                     "description": "Controls specifically address ransomware: segmentation, immutable backups, and recovery playbook.",
                     "guidance": (
                         "Verify network segmentation limits blast radius. "
-                        "Confirm offline or immutable backup copies exist and recovery RTO/RPO are defined."
+                        "Confirm offline or immutable backup copies exist."
                     ),
                     "maturity_levels": MATURITY_LABELS,
                     "evidence_types": ["policy", "screenshot", "log"],
@@ -229,9 +232,9 @@ RUBRIC_DATA = {
                 {
                     "code": "IRR-5",
                     "title": "Breach Notification Process",
-                    "description": "A defined process ensures timely breach notification to regulators, affected individuals, and stakeholders.",
+                    "description": "A defined process ensures timely breach notification to regulators and stakeholders.",
                     "guidance": (
-                        "Review notification procedure for FERPA, state breach law, and cyber insurance requirements. "
+                        "Review notification procedure for FERPA, state breach law, and cyber insurance. "
                         "Confirm legal counsel and PR contacts are embedded in the IRP."
                     ),
                     "maturity_levels": MATURITY_LABELS,
@@ -247,7 +250,7 @@ RUBRIC_DATA = {
 def seed() -> None:
     db = SessionLocal()
     try:
-        # Check if already seeded
+        # ── Rubric ────────────────────────────────────────────────────────────
         existing_rubric = db.query(Rubric).filter(
             Rubric.name == RUBRIC_DATA["name"]
         ).first()
@@ -273,7 +276,7 @@ def seed() -> None:
                 db.flush()
 
                 for item_data in domain_data["items"]:
-                    item = RubricItem(
+                    db.add(RubricItem(
                         domain_id=domain.id,
                         code=item_data["code"],
                         title=item_data["title"],
@@ -282,52 +285,25 @@ def seed() -> None:
                         maturity_levels=item_data["maturity_levels"],
                         evidence_types=item_data["evidence_types"],
                         sort_order=item_data["sort_order"],
-                    )
-                    db.add(item)
+                    ))
             print(f"  Rubric '{rubric.name}' created with 3 domains, 15 items.")
         else:
             print("Rubric already exists, skipping.")
-            rubric = existing_rubric
 
-        # Demo tenant
+        # ── Tenant ────────────────────────────────────────────────────────────
         existing_tenant = db.query(Tenant).filter(
-            Tenant.name == settings.SEED_TENANT_NAME
+            Tenant.name == SEED_TENANT_NAME
         ).first()
 
         if not existing_tenant:
-            print(f"Seeding tenant '{settings.SEED_TENANT_NAME}'…")
-            tenant = Tenant(name=settings.SEED_TENANT_NAME)
-            db.add(tenant)
-            db.flush()
+            print(f"Seeding tenant '{SEED_TENANT_NAME}'…")
+            db.add(Tenant(name=SEED_TENANT_NAME))
         else:
-            print(f"Tenant '{settings.SEED_TENANT_NAME}' already exists, skipping.")
-            tenant = existing_tenant
-
-        # Admin user
-        existing_admin = db.query(User).filter(
-            User.tenant_id == tenant.id,
-            User.email == settings.SEED_ADMIN_EMAIL,
-        ).first()
-
-        if not existing_admin:
-            print(f"Seeding admin user '{settings.SEED_ADMIN_EMAIL}'…")
-            admin = User(
-                tenant_id=tenant.id,
-                email=settings.SEED_ADMIN_EMAIL,
-                password_hash=hash_password(settings.SEED_ADMIN_PASSWORD),
-                name="District Admin",
-                role=UserRole.admin,
-                is_active=True,
-            )
-            db.add(admin)
-        else:
-            print(f"Admin user '{settings.SEED_ADMIN_EMAIL}' already exists, skipping.")
+            print(f"Tenant '{SEED_TENANT_NAME}' already exists, skipping.")
 
         db.commit()
         print("\n✓ Seed complete.")
-        print(f"  Login: {settings.SEED_ADMIN_EMAIL}")
-        print(f"  Password: {settings.SEED_ADMIN_PASSWORD}")
-        print(f"  Tenant: {settings.SEED_TENANT_NAME}")
+        print("  Users are provisioned automatically on first Microsoft 365 login.")
 
     except Exception as e:
         db.rollback()

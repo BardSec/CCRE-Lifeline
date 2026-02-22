@@ -136,6 +136,8 @@ def check_overdue_tasks() -> None:
 
 def start_scheduler() -> None:
     global _scheduler
+    if _scheduler and _scheduler.running:
+        return  # Already started (e.g. Flask reloader double-imports)
     _scheduler = BackgroundScheduler(timezone="UTC")
 
     # Run every Monday at 07:00 UTC

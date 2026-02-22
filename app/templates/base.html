@@ -12,31 +12,31 @@
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">Rubric<span>Ops</span></div>
     <div class="sidebar-nav">
-      <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">
+      <a href="/" class="{% if request.path == '/' %}active{% endif %}">
         &#9632; Dashboard
       </a>
 
       <div class="nav-group">Evaluations</div>
-      <a href="/evaluations" class="{% if '/evaluations' in request.url.path %}active{% endif %}">
+      <a href="/evaluations" class="{% if '/evaluations' in request.path %}active{% endif %}">
         &#9660; Evaluations
       </a>
-      <a href="/tasks" class="{% if '/tasks' in request.url.path %}active{% endif %}">
+      <a href="/tasks" class="{% if '/tasks' in request.path %}active{% endif %}">
         &#9675; Action Tasks
       </a>
-      <a href="/evidence" class="{% if '/evidence' in request.url.path %}active{% endif %}">
+      <a href="/evidence" class="{% if '/evidence' in request.path %}active{% endif %}">
         &#128196; Evidence
       </a>
 
       {% if current_user.role in ('admin', 'evaluator') %}
       <div class="nav-group">Admin</div>
       {% if current_user.role == 'admin' %}
-      <a href="/admin/users" class="{% if '/admin/users' in request.url.path %}active{% endif %}">
+      <a href="/admin/users" class="{% if '/admin/users' in request.path %}active{% endif %}">
         &#128101; Users
       </a>
-      <a href="/admin/tenant" class="{% if '/admin/tenant' in request.url.path %}active{% endif %}">
+      <a href="/admin/tenant" class="{% if '/admin/tenant' in request.path %}active{% endif %}">
         &#9881; Tenant Settings
       </a>
-      <a href="/admin/audit-log" class="{% if '/admin/audit' in request.url.path %}active{% endif %}">
+      <a href="/admin/audit-log" class="{% if '/admin/audit' in request.path %}active{% endif %}">
         &#128196; Audit Log
       </a>
       {% endif %}

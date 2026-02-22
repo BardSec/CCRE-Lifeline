@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
 
+from flask_login import UserMixin
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -76,7 +77,7 @@ class Tenant(Base):
     evaluations = relationship("Evaluation", back_populates="tenant", lazy="dynamic")
 
 
-class User(Base):
+class User(UserMixin, Base):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_user_tenant_email"),
@@ -86,13 +87,18 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     email = Column(String(255), nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    # Nullable: OIDC users have no local password.
+    password_hash = Column(String(255), nullable=True)
     name = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.viewer)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     tenant = relationship("Tenant", back_populates="users")
+
+    # Flask-Login requires get_id() to return a string.
+    def get_id(self) -> str:
+        return str(self.id)
 
 
 class Rubric(Base):
