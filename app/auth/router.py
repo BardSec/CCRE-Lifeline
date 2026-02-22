@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import audit, get_current_user
@@ -17,12 +15,12 @@ from app.auth.security import (
 )
 from app.config import get_settings
 from app.database import get_db
+from app.limiter import limiter
 from app.models import User
 
 settings = get_settings()
 router = APIRouter(tags=["auth"])
 templates = Jinja2Templates(directory="app/templates")
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -34,7 +32,6 @@ async def login_page(request: Request):
 @limiter.limit(settings.LOGIN_RATE_LIMIT)
 async def login(
     request: Request,
-    response: Response,
     email: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
@@ -72,7 +69,7 @@ async def login(
         value=token,
         httponly=True,
         samesite="lax",
-        secure=False,  # Set True behind HTTPS in production
+        secure=settings.COOKIE_SECURE,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     return resp

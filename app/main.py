@@ -8,13 +8,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.jobs.scheduler import start_scheduler, stop_scheduler
+from app.limiter import limiter
 from app.routers.admin import router as admin_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.evaluations import router as eval_router
@@ -27,9 +27,6 @@ logging.basicConfig(
 )
 
 settings = get_settings()
-
-# ── Rate limiter ───────────────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
@@ -50,6 +47,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Single shared limiter instance — same object used by both decorators and app.state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -58,19 +56,23 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # ── Global template context ────────────────────────────────────────────────────
 templates = Jinja2Templates(directory="app/templates")
 
+
 @app.middleware("http")
 async def inject_globals(request: Request, call_next):
     request.state.now = datetime.utcnow()
     response = await call_next(request)
     return response
 
+
 # Inject `now` into every template automatically
 _orig_TemplateResponse = Jinja2Templates.TemplateResponse
 
+
 def _patched_TemplateResponse(self, name, context, *args, **kwargs):
-    if "request" in context and not "now" in context:
+    if "request" in context and "now" not in context:
         context["now"] = datetime.utcnow()
     return _orig_TemplateResponse(self, name, context, *args, **kwargs)
+
 
 Jinja2Templates.TemplateResponse = _patched_TemplateResponse
 

@@ -40,6 +40,11 @@ class Settings(BaseSettings):
         "text/csv",
     ]
 
+    # ── Cookie security ───────────────────────────────────────────────────────
+    # True = required for HTTPS deployments (default).
+    # Set COOKIE_SECURE=false only for local HTTP-only development.
+    COOKIE_SECURE: bool = True
+
     # ── Rate limiting ─────────────────────────────────────────────────────────
     LOGIN_RATE_LIMIT: str = "10/minute"
 
