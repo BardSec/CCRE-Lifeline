@@ -1,28 +1,13 @@
-#!/usr/bin/env python3
 """
-Seed script: creates the initial tenant and K12 cybersecurity rubric.
+Default data: the organization (tenant) and the K12 cybersecurity rubric.
 
-Users are provisioned automatically on first OIDC login — no seeding required.
-Run automatically by entrypoint.sh, or manually:
-    docker compose exec web python scripts/seed.py
+Users are provisioned automatically on first sign-in, so none are seeded.
+Run with `flask seed` (entrypoint.sh does this on every start). Safe to re-run.
 """
 from __future__ import annotations
 
-import os
-import sys
-
-sys.path.insert(0, "/app")
-
-from app.database import init_db, SessionLocal
+from app.extensions import db
 from app.models import Rubric, RubricDomain, RubricItem, Tenant
-
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+psycopg2://rubricops:changeme@db:5432/rubricops",
-)
-SEED_TENANT_NAME = os.environ.get("SEED_TENANT_NAME", "Lakeside School District")
-
-init_db(DATABASE_URL)
 
 
 MATURITY_LABELS = {
@@ -247,71 +232,48 @@ RUBRIC_DATA = {
 }
 
 
-def seed() -> None:
-    db = SessionLocal()
-    try:
-        # ── Rubric ────────────────────────────────────────────────────────────
-        existing_rubric = db.query(Rubric).filter(
-            Rubric.name == RUBRIC_DATA["name"]
-        ).first()
+def seed(tenant_name: str) -> list[str]:
+    """Create the rubric and tenant if missing. Returns progress messages."""
+    out: list[str] = []
 
-        if not existing_rubric:
-            print("Seeding rubric…")
-            rubric = Rubric(
-                name=RUBRIC_DATA["name"],
-                version=RUBRIC_DATA["version"],
-                description=RUBRIC_DATA["description"],
+    if db.session.query(Rubric).filter(Rubric.name == RUBRIC_DATA["name"]).first():
+        out.append("Rubric already exists, skipping.")
+    else:
+        rubric = Rubric(
+            name=RUBRIC_DATA["name"],
+            version=RUBRIC_DATA["version"],
+            description=RUBRIC_DATA["description"],
+        )
+        db.session.add(rubric)
+        item_count = 0
+        for domain_data in RUBRIC_DATA["domains"]:
+            domain = RubricDomain(
+                name=domain_data["name"],
+                description=domain_data["description"],
+                sort_order=domain_data["sort_order"],
             )
-            db.add(rubric)
-            db.flush()
+            rubric.domains.append(domain)
+            for item_data in domain_data["items"]:
+                domain.items.append(RubricItem(
+                    code=item_data["code"],
+                    title=item_data["title"],
+                    description=item_data["description"],
+                    guidance=item_data["guidance"],
+                    maturity_levels=item_data["maturity_levels"],
+                    evidence_types=item_data["evidence_types"],
+                    sort_order=item_data["sort_order"],
+                ))
+                item_count += 1
+        out.append(f"Rubric '{rubric.name}' created with "
+                   f"{len(RUBRIC_DATA['domains'])} domains, {item_count} items.")
 
-            for domain_data in RUBRIC_DATA["domains"]:
-                domain = RubricDomain(
-                    rubric_id=rubric.id,
-                    name=domain_data["name"],
-                    description=domain_data["description"],
-                    sort_order=domain_data["sort_order"],
-                )
-                db.add(domain)
-                db.flush()
+    # This is a single-organization deployment: if any tenant exists (even
+    # one renamed in Admin → Tenant Settings), don't create another.
+    if db.session.query(Tenant).first():
+        out.append("Tenant already exists, skipping.")
+    else:
+        db.session.add(Tenant(name=tenant_name))
+        out.append(f"Tenant '{tenant_name}' created.")
 
-                for item_data in domain_data["items"]:
-                    db.add(RubricItem(
-                        domain_id=domain.id,
-                        code=item_data["code"],
-                        title=item_data["title"],
-                        description=item_data["description"],
-                        guidance=item_data["guidance"],
-                        maturity_levels=item_data["maturity_levels"],
-                        evidence_types=item_data["evidence_types"],
-                        sort_order=item_data["sort_order"],
-                    ))
-            print(f"  Rubric '{rubric.name}' created with 3 domains, 15 items.")
-        else:
-            print("Rubric already exists, skipping.")
-
-        # ── Tenant ────────────────────────────────────────────────────────────
-        existing_tenant = db.query(Tenant).filter(
-            Tenant.name == SEED_TENANT_NAME
-        ).first()
-
-        if not existing_tenant:
-            print(f"Seeding tenant '{SEED_TENANT_NAME}'…")
-            db.add(Tenant(name=SEED_TENANT_NAME))
-        else:
-            print(f"Tenant '{SEED_TENANT_NAME}' already exists, skipping.")
-
-        db.commit()
-        print("\n✓ Seed complete.")
-        print("  Users are provisioned automatically on first Microsoft 365 login.")
-
-    except Exception as e:
-        db.rollback()
-        print(f"Seed failed: {e}", file=sys.stderr)
-        sys.exit(1)
-    finally:
-        db.close()
-
-
-if __name__ == "__main__":
-    seed()
+    db.session.commit()
+    return out

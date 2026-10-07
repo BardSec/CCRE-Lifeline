@@ -1,16 +1,12 @@
 #!/bin/bash
+# Apply migrations, create default data if missing, then start the given command.
 set -e
 
 echo "==> Running database migrations..."
-alembic upgrade head
+flask db upgrade
 
-echo "==> Seeding database..."
-python scripts/seed.py
+echo "==> Seeding default data..."
+flask seed
 
-echo "==> Starting Gunicorn..."
-exec gunicorn wsgi:app \
-    --bind "0.0.0.0:${PORT:-5000}" \
-    --workers "${GUNICORN_WORKERS:-2}" \
-    --timeout 120 \
-    --access-logfile - \
-    --error-logfile -
+echo "==> Starting: $*"
+exec "$@"

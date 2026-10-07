@@ -1,0 +1,15 @@
+# Dev override: hot reload, debug mode, HTTP cookies, postgres exposed for tests.
+# Usage: make dev   (or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up)
+services:
+  web:
+    command: flask run --host 0.0.0.0 --port 5000 --debug
+    environment:
+      COOKIE_SECURE: "false"
+      BEHIND_PROXY: "false"
+    volumes:
+      - .:/app
+      - evidence_data:/app/evidence
+
+  db:
+    ports:
+      - "127.0.0.1:5440:5432"

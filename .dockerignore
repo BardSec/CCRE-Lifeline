@@ -1,0 +1,11 @@
+.env
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+evidence
+sessions.md
+wins.md
+futureplans.md

@@ -10,6 +10,7 @@
     <div class="card-header">Upload Evidence File</div>
     <div class="card-body">
       <form method="post" action="/evidence/upload" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label>File *</label>
           <input type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.gif,.xlsx,.xls,.docx,.txt,.csv">

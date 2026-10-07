@@ -20,7 +20,11 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
+
+from app.extensions import db
+
+Base = db.Model
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────────
@@ -53,12 +57,6 @@ class Sensitivity(str, PyEnum):
     public = "public"
     internal = "internal"
     confidential = "confidential"
-
-
-# ── Base ───────────────────────────────────────────────────────────────────────
-
-class Base(DeclarativeBase):
-    pass
 
 
 # ── Core domain models ─────────────────────────────────────────────────────────

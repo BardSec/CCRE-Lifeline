@@ -58,6 +58,7 @@
     </div>
     <div class="card-body">
       <form method="post" action="/evaluations">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label>Title</label>
           <input type="text" name="title" required placeholder="e.g., FY2025 Annual Cybersecurity Review">

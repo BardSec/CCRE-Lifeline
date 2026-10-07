@@ -8,6 +8,7 @@
     <div class="card-header">District Settings</div>
     <div class="card-body">
       <form method="post" action="/admin/tenant">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label>District Name *</label>
           <input type="text" name="name" value="{{ tenant.name }}" required>

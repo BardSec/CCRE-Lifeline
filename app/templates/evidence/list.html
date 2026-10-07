@@ -48,6 +48,7 @@
               <a href="/evidence/{{ ev.id }}/download" class="btn btn-secondary btn-sm">&#8659;</a>
               {% if current_user.role in ('admin', 'evaluator', 'contributor') %}
               <form method="post" action="/evidence/{{ ev.id }}/delete" style="margin:0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-danger btn-sm" type="submit"
                         onclick="return confirm('Delete this evidence file?')">&#10005;</button>
               </form>

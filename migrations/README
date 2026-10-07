@@ -1,0 +1,4 @@
+Single-database configuration for Flask-Migrate.
+
+flask db migrate -m "description"   # generate
+flask db upgrade                    # apply

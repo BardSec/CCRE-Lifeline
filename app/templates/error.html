@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error {{ code }} — RubricOps</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-box">
+    <div class="login-logo">Rubric<span>Ops</span></div>
+    <div class="alert alert-error">{{ message }}</div>
+    {% if description and description != message %}
+    <p class="text-sm text-muted">{{ description }}</p>
+    {% endif %}
+    <a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary">Back to dashboard</a>
+  </div>
+</div>
+</body>
+</html>

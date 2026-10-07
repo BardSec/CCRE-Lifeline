@@ -19,6 +19,7 @@
     <a href="/evaluations/{{ eval.id }}/export/pdf" class="btn btn-secondary btn-sm">&#8659; PDF</a>
     {% if eval.status == 'draft' and current_user.role in ('admin', 'evaluator') %}
     <form method="post" action="/evaluations/{{ eval.id }}/finalize" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-success btn-sm" type="submit"
               onclick="return confirm('Finalize this evaluation? Scores will become read-only.')">
         Finalize
@@ -71,6 +72,7 @@
   <div class="card-body">
     <form method="post" action="/evaluations/{{ eval.id }}/suggest-tasks"
           style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <strong>Generate tasks for items below maturity level:</strong>
       <select name="target_level" style="width:80px">
         <option value="2">2</option>
@@ -194,6 +196,7 @@
     </div>
     <div class="card-body">
       <form id="score-form" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label>Maturity Level (0 = unscored)</label>
           <select name="maturity_level" id="modal-level">
