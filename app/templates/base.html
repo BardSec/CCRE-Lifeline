@@ -55,6 +55,7 @@
       <div class="topbar-user">
         <span class="text-muted text-sm">{{ current_user.tenant.name }}</span>
         <form method="post" action="/logout" style="margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-secondary btn-sm" type="submit">Sign out</button>
         </form>
       </div>

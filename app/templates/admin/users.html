@@ -26,6 +26,7 @@
             {% if u.id != current_user.id %}
             <form method="post" action="/admin/users/{{ u.id }}/update"
                   style="display:flex;gap:.25rem;align-items:center">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="role" style="padding:.2rem .4rem;font-size:12px;border:1px solid #e5e7eb;border-radius:4px">
                 {% for r in UserRole %}
                 <option value="{{ r.value }}" {% if r == u.role %}selected{% endif %}>{{ r.value }}</option>

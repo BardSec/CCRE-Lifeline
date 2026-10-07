@@ -16,7 +16,8 @@
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
 
-    <a href="/login" class="btn btn-primary w-full"
+    {% if sso %}
+    <a href="{{ url_for('auth.auth_start') }}" class="btn btn-primary w-full"
        style="justify-content:center;margin-top:.5rem;display:flex;align-items:center;gap:.5rem;text-decoration:none">
       <svg width="18" height="18" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
@@ -26,6 +27,17 @@
       </svg>
       Sign in with Microsoft 365
     </a>
+    {% else %}
+    <div class="alert alert-warn">Development login — SSO is not configured.</div>
+    <form method="post" action="{{ url_for('auth.dev_login') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autofocus>
+      </div>
+      <button class="btn btn-primary w-full" type="submit" style="justify-content:center">Sign in</button>
+    </form>
+    {% endif %}
 
     <p class="text-sm text-muted mt-2" style="text-align:center">
       Contact your district administrator if you cannot access your account.

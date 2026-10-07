@@ -51,6 +51,7 @@
           {% if current_user.role in ('admin','evaluator','contributor') %}
           <td>
             <form method="post" action="/tasks/{{ task.id }}/update" style="display:flex;gap:.25rem">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="new_status" style="padding:.2rem .4rem;font-size:12px;border:1px solid #e5e7eb;border-radius:4px">
                 {% for s in TaskStatus %}
                 <option value="{{ s.value }}" {% if s == task.status %}selected{% endif %}>{{ s.value }}</option>
@@ -83,6 +84,7 @@
     </div>
     <div class="card-body">
       <form method="post" action="/tasks/create">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label>Title *</label>
           <input type="text" name="title" required>

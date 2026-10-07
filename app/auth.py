@@ -1,121 +1,104 @@
+"""Microsoft Entra ID sign-in (OIDC via Authlib), with a dev login when SSO is unset."""
 from __future__ import annotations
 
 import logging
+import uuid
 
-from flask import Blueprint, abort, current_app, redirect, request, url_for
+from flask import Blueprint, abort, current_app, redirect, render_template, request, session, url_for
 from flask_login import login_required, login_user, logout_user
 
-from app import login_manager, oauth
-from app.database import get_db
-from app.models import AuditLog, Tenant, User, UserRole
+from app.extensions import db, limiter, login_manager, oauth
+from app.models import User
+from app.services import users
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__)
 
 
-# ── Flask-Login user loader ─────────────────────────────────────────────────────
+def _login_limit() -> str:
+    return current_app.config["LOGIN_RATE_LIMIT"]
+
 
 @login_manager.user_loader
 def load_user(user_id: str) -> User | None:
-    return get_db().query(User).filter(
-        User.id == user_id,
-        User.is_active == True,
-    ).first()
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        return None
+    user = db.session.get(User, uid)
+    # Re-checked on every request, so deactivating a user ends their session.
+    return user if user and user.is_active else None
 
-
-# ── Routes ─────────────────────────────────────────────────────────────────────
 
 @auth_bp.route("/login")
 def login():
+    return render_template("login.html", sso=current_app.config_class.sso_enabled())
+
+
+@auth_bp.route("/auth/start")
+@limiter.limit(_login_limit)
+def auth_start():
+    if not current_app.config_class.sso_enabled():
+        abort(404)
     redirect_uri = url_for("auth.callback", _external=True)
-    return oauth.microsoft.authorize_redirect(redirect_uri)
+    return oauth.microsoft.authorize_redirect(redirect_uri, prompt="select_account")
 
 
 @auth_bp.route("/auth/callback")
+@limiter.limit(_login_limit)
 def callback():
-    token = oauth.microsoft.authorize_access_token()
+    if not current_app.config_class.sso_enabled():
+        abort(404)
+    try:
+        token = oauth.microsoft.authorize_access_token()
+    except Exception:
+        log.warning("OIDC token exchange failed", exc_info=True)
+        return _denied("Microsoft sign-in did not complete. Try again.")
+
     userinfo = token.get("userinfo") or {}
-
-    email = (userinfo.get("email") or userinfo.get("preferred_username") or "").lower().strip()
-    name = userinfo.get("name") or email
-
-    if not email:
-        logger.warning("OIDC callback: no email in userinfo")
-        abort(403)
-
-    # ── Authorization: email or domain allow-list ──────────────────────────────
-    domain = email.split("@")[-1] if "@" in email else ""
-    admin_emails: list[str] = current_app.config.get("ADMIN_EMAILS", [])
-    allowed_domains: list[str] = current_app.config.get("ALLOWED_DOMAINS", [])
-
-    if email not in admin_emails and domain not in allowed_domains and allowed_domains:
-        logger.warning("OIDC callback: unauthorized email %s", email)
-        abort(403)
-
-    db = get_db()
-
-    # ── Tenant (single-tenant: use the first/only seeded tenant) ──────────────
-    tenant: Tenant | None = db.query(Tenant).first()
-    if not tenant:
-        logger.error("OIDC callback: no tenant found — run `make seed` first")
-        abort(500)
-
-    # ── User provisioning ─────────────────────────────────────────────────────
-    user: User | None = db.query(User).filter(
-        User.tenant_id == tenant.id,
-        User.email == email,
-    ).first()
-
-    if not user:
-        role = UserRole.admin if email in admin_emails else UserRole(
-            current_app.config.get("DEFAULT_USER_ROLE", "viewer")
-        )
-        user = User(
-            tenant_id=tenant.id,
-            email=email,
-            name=name,
-            role=role,
-            is_active=True,
-        )
-        db.add(user)
-        db.flush()
-        logger.info("OIDC: provisioned new user %s with role %s", email, role)
-    else:
-        # Auto-promote to admin if added to ADMIN_EMAILS list after initial login.
-        if email in admin_emails and user.role != UserRole.admin:
-            user.role = UserRole.admin
-            logger.info("OIDC: promoted %s to admin", email)
-
-    _audit(db, user, "login", "user", str(user.id))
-    db.commit()
-
-    login_user(user)
-    return redirect(url_for("dashboard.index"))
+    email = (userinfo.get("email") or userinfo.get("preferred_username") or "").strip().lower()
+    return _finish(email, userinfo.get("name"))
 
 
-@auth_bp.route("/logout", methods=["GET", "POST"])
+@auth_bp.route("/login/dev", methods=["POST"])
+@limiter.limit(_login_limit)
+def dev_login():
+    # Only exists while SSO is unset, and Config.validate() refuses to start
+    # with BEHIND_PROXY and no SSO, so this can't be reached when deployed.
+    if current_app.config_class.sso_enabled():
+        abort(404)
+    email = (request.form.get("email") or "").strip().lower()
+    return _finish(email, email.split("@")[0])
+
+
+@auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
     logout_user()
+    session.clear()
     return redirect(url_for("auth.login"))
 
 
 @auth_bp.route("/healthz")
+@limiter.exempt
 def healthz():
     return {"status": "ok"}
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+def _finish(email: str, name: str | None):
+    try:
+        users.check_allowed(email, current_app.config)
+        user = users.record_login(email, name, current_app.config)
+    except users.AccessDenied as e:
+        log.warning("sign-in refused for %s: %s", email or "(no email)", e)
+        return _denied(str(e))
+    session.clear()  # drop anything set before sign-in (session fixation)
+    session.permanent = True
+    login_user(user)
+    return redirect(url_for("dashboard.index"))
 
-def _audit(db, actor: User, action: str, entity_type: str,
-           entity_id: str | None = None, detail: dict | None = None) -> None:
-    db.add(AuditLog(
-        tenant_id=actor.tenant_id,
-        actor_user_id=actor.id,
-        action=action,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        ip_address=request.remote_addr,
-        detail_json=detail,
-    ))
+
+def _denied(message: str):
+    session.clear()
+    return render_template("login.html", sso=current_app.config_class.sso_enabled(), error=message), 403

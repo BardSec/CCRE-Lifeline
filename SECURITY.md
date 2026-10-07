@@ -1,131 +1,146 @@
 # Security Guide — RubricOps
 
-This document describes the security controls built into RubricOps and the
-configuration steps an administrator must perform before running it in production.
+This document describes the security controls built into RubricOps and what an
+administrator must configure before running it in production.
+
+RubricOps stores a district's cybersecurity self-assessment: maturity scores, the
+gaps that remain, and evidence files such as policies and audit reports. That is a
+roadmap of the district's weaknesses, so treat the database and the evidence
+volume as **confidential**.
 
 ---
 
 ## How Data Is Protected
 
 ### Authentication
-- **Email + password** authentication with bcrypt hashing (cost factor 12).
-- Sessions are stored as **JWT tokens in httpOnly, SameSite=Lax cookies**, preventing JavaScript
-  access and CSRF from cross-origin pages.
-- **Rate limiting** is enforced on `POST /login`: 10 requests per minute per IP.
-- Tokens expire after **8 hours** (configurable via `ACCESS_TOKEN_EXPIRE_MINUTES`).
+- **Microsoft Entra ID (OIDC)** via Authlib. RubricOps never sees or stores passwords.
+- Users are created automatically on their first successful sign-in.
+- `ALLOWED_DOMAINS` restricts sign-in to district email domains. Emails in
+  `ADMIN_EMAILS` are always allowed and are given the admin role.
+- **Dev login fallback:** when the three `AZURE_*` variables are unset, the
+  login page offers a password-less, email-only sign-in for local development.
+  The app **refuses to start** if `BEHIND_PROXY=true` and SSO isn't configured,
+  and also refuses a partial SSO configuration, so the dev login can't be
+  exposed on a deployed instance by accident.
+- **Sessions** are signed Flask cookies (`HttpOnly`, `SameSite=Lax`, `Secure`
+  when `COOKIE_SECURE` or `BEHIND_PROXY` is set) that expire after 8 hours. The
+  session is cleared at sign-in (session fixation) and at sign-out.
+- Deactivating a user ends their session on the next request.
+- **Rate limiting:** the login routes are limited to `LOGIN_RATE_LIMIT` per IP
+  (default 10 per minute). Limits are held in memory, per Gunicorn worker.
 
 ### Authorization (RBAC)
 | Role | Capabilities |
 |---|---|
 | `admin` | Full access: user management, tenant settings, audit log |
-| `evaluator` | Create/finalize evaluations, upload evidence, manage tasks |
-| `contributor` | Update scores, upload evidence, update tasks |
-| `viewer` | Read-only access to evaluations, evidence list, tasks |
+| `evaluator` | Create/finalize evaluations, generate tasks, upload evidence |
+| `contributor` | Update scores, upload evidence, create/update tasks |
+| `viewer` | Read-only access to evaluations, evidence, and tasks |
 
-- **Every database query is scoped to `tenant_id`** — no cross-tenant data leakage is possible
-  through the application layer.
-- Role checks are enforced via FastAPI dependency injection (`require_roles`), not ad-hoc conditionals.
+- Enforced on each route with the `@role_required` decorators in
+  `app/blueprints/helpers.py`.
+- Admins can't change their own role or deactivate themselves, so the
+  organization can't be left without an admin.
+- Every query is scoped to the signed-in user's `tenant_id`, and references in
+  form input (task owners, evaluations) are checked against the same tenant.
+  RubricOps is deployed as **one organization per instance**: all users join
+  the single tenant created by `flask seed`.
+
+### CSRF
+- Flask-WTF `CSRFProtect` is enabled globally. Every state-changing route is a
+  POST that requires the session's CSRF token, including sign-out.
 
 ### Evidence File Storage
-- Files are stored in **MinIO** (local S3-compatible object storage), not the database.
-- The database stores only **metadata** (key, filename, content type, size, uploader, timestamps).
-- Object keys are **tenant-prefixed** (`<tenant_id>/evidence/<uuid>.<ext>`), preventing path
-  traversal between tenants.
-- Uploads are validated for:
-  - **Content type** (allowlist; see `ALLOWED_CONTENT_TYPES` in `.env`)
-  - **File size** (default 50 MB; set `MAX_UPLOAD_BYTES`)
-- MinIO bucket access is set to **private** (no public object URLs).
+- Files are stored on a Docker volume (`evidence_data`, mounted at `EVIDENCE_DIR`),
+  not in the database. The database stores only metadata.
+- Files are only ever served through the authenticated, tenant-scoped download
+  route, and every download is written to the audit log.
+- Storage keys are generated server-side (`<tenant_id>/evidence/<uuid>.<ext>`).
+  The extension is reduced to 1–10 lowercase alphanumerics, and every path is
+  checked to stay inside `EVIDENCE_DIR`, so a crafted filename can't write
+  outside the evidence directory.
+- Uploads are validated for content type (allowlist in `app/config.py`) and
+  size (`MAX_UPLOAD_BYTES`, default 50 MB; oversized requests are rejected
+  before being read).
+
+### Exports
+- PDF and CSV exports are tenant-scoped. CSV cells containing user-entered text
+  are prefixed with `'` when they start with `=`, `+`, `-` or `@`, so they
+  open as text in Excel rather than as formulas.
 
 ### Audit Logging
-- Every significant action (login, score update, evidence upload/delete, user management, etc.)
-  is written to the `audit_logs` table with: actor, action, entity, timestamp, IP address.
-- Logs are tenant-scoped and visible only to `admin` users.
+- Sign-ins, evaluation and score changes, task changes, evidence
+  upload/download/delete, user management, and tenant settings changes are
+  recorded with actor, timestamp, client IP, and details.
+- Admins can review the log under **Admin → Audit Log**.
 
-### Secrets Management
-- All secrets are loaded from **environment variables** (`.env` file, never committed to source).
-- No secrets appear in logs, error messages, or HTTP responses.
+### Input Validation
+- Form input (ids, dates, numbers, enum choices) is validated in the service
+  layer, so bad input returns a 400 page, not a server error.
 
 ---
 
 ## Production Hardening Checklist
 
-### 1. Secrets — REQUIRED before going live
-
-```bash
-# Generate a strong SECRET_KEY
-python -c "import secrets; print(secrets.token_hex(32))"
-
-# Set strong PostgreSQL password
-POSTGRES_PASSWORD=<strong-random>
-
-# Set strong MinIO credentials
-MINIO_ROOT_USER=<non-default>
-MINIO_ROOT_PASSWORD=<strong-random>
+### 1. Configuration
+```env
+SECRET_KEY=<64 hex chars from: python -c "import secrets; print(secrets.token_hex(32))">
+BEHIND_PROXY=true
+AZURE_TENANT_ID=<your directory (tenant) id>   # not "common"
+AZURE_CLIENT_ID=<app registration client id>
+AZURE_CLIENT_SECRET=<client secret>
+ALLOWED_DOMAINS=<your district domain(s)>
+ADMIN_EMAILS=<the people who should administer RubricOps>
+POSTGRES_PASSWORD=<strong random value, also used in DATABASE_URL>
 ```
+- The app won't start with a missing or placeholder `SECRET_KEY`.
+- Rotating `SECRET_KEY` signs everyone out.
+- Use your own tenant ID rather than `common`. If you must use `common`,
+  `ALLOWED_DOMAINS` is the only thing keeping outside accounts out.
 
-- Replace all default values in `.env` before first deployment.
-- `SECRET_KEY` rotation invalidates all active sessions.
+### 2. Network
+- Run behind **Cloudflare Tunnel** (or another TLS-terminating reverse proxy).
+  The app never terminates TLS itself.
+- The web port is published on `127.0.0.1` only, and PostgreSQL isn't published
+  at all in `docker-compose.yml`. Keep it that way. (`docker-compose.dev.yml`
+  exposes Postgres on `127.0.0.1:5440` for local tests only.)
+- Consider Cloudflare Access in front of the tunnel for an additional layer.
 
-### 2. HTTPS — REQUIRED
-
-- Place a **reverse proxy** (Nginx, Caddy, Traefik) in front of the web container.
-- Configure **TLS termination** at the proxy layer.
-- Set `secure=True` on the session cookie (in `app/auth/router.py`, line with `set_cookie`).
-- Redirect all HTTP → HTTPS at the proxy level.
-
-### 3. Network isolation
-
-- MinIO should **not** be exposed to the public internet.
-  Remove the port mapping in `docker-compose.yml` or restrict it to `127.0.0.1`.
-- PostgreSQL should **not** be exposed externally. The `db` service has no published ports
-  by default — keep it that way.
+### 3. Entra ID app registration
+- Redirect URI: `https://<your-domain>/auth/callback`
+- Only the default `openid email profile` scopes are requested. No Graph API
+  permissions are needed.
+- Set a calendar reminder for the client secret's expiry.
 
 ### 4. Backups
+- **PostgreSQL:** schedule `pg_dump` of the `rubricops` database to off-site storage.
+- **Evidence:** back up the `evidence_data` volume on the same schedule. The
+  database alone doesn't contain the files.
+- Both backups contain sensitive security information; encrypt them.
 
-- **PostgreSQL**: schedule `pg_dump` of the `rubricops` database to off-site storage.
-- **MinIO**: use `mc mirror` to replicate the bucket to a secondary storage location or
-  configure MinIO replication.
+### 5. File uploads
+- Narrow `ALLOWED_CONTENT_TYPES` in `app/config.py` if your district doesn't
+  need every permitted type.
+- Lower `MAX_UPLOAD_BYTES` to what your evidence actually needs.
 
-### 5. Token & session security
-
-- Reduce `ACCESS_TOKEN_EXPIRE_MINUTES` if higher security is needed (e.g., `60` for 1-hour sessions).
-- There is no server-side token revocation in the MVP. For logout, the cookie is deleted client-side.
-  Add a token blocklist (Redis-backed) in future iterations.
-
-### 6. File upload security
-
-- Review and tighten `ALLOWED_CONTENT_TYPES` if your district does not need all permitted types.
-- The `MAX_UPLOAD_BYTES` limit (default 50 MB) is enforced server-side. Set this to the minimum
-  needed for your evidence documents.
-
-### 7. Login rate limiting
-
-- The default rate limit is **10 login attempts per minute per IP**.
-- Adjust `LOGIN_RATE_LIMIT` in `.env` (e.g., `5/minute`) for higher security.
-- For additional brute-force protection, add an account lockout mechanism or a CAPTCHA.
-
-### 8. Dependency updates
-
-- Run `pip list --outdated` regularly and update packages, especially security-critical ones
-  (`python-jose`, `passlib`, `fastapi`).
+### 6. Dependency updates
+- Run `pip list --outdated` in the container regularly, prioritizing Flask,
+  Authlib, Flask-WTF, Werkzeug, and SQLAlchemy.
 
 ---
 
-## SSO Roadmap (Next Steps)
+## Known Limitations
 
-The MVP uses email + password. The following SSO integrations are planned for future releases:
-
-- **Microsoft 365 / Azure AD**: OAuth 2.0 / OIDC via `msal` or `python-social-auth`.
-  Users can log in with their district Microsoft accounts.
-- **Google Workspace**: OAuth 2.0 / OIDC via `authlib`.
-  Users can log in with their district Google accounts.
-
-Both integrations will be additive — email/password will remain as a fallback for
-service accounts and emergency admin access.
+- Rate limits and the weekly background jobs run per Gunicorn worker (in memory),
+  not shared across workers.
+- Stale/expiring evidence and overdue task alerts are written to the app log only;
+  there are no email notifications yet.
+- No Content-Security-Policy header yet. The templates use inline scripts and
+  styles, which would need to move to static files first.
 
 ---
 
 ## Reporting Vulnerabilities
 
-Report security vulnerabilities responsibly by opening a private GitHub security advisory
-or contacting the maintainers directly. Do not open public issues for security bugs.
+Report security vulnerabilities by opening a private GitHub security advisory or by
+contacting the maintainers directly. Don't open public issues for security bugs.
